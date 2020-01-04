@@ -7,3 +7,17 @@ Table of contents
 
 Requirements
 -----------
+
+Reference
+-----------
+
+BibTex:
+
+```Latex
+@article{xu2019mr,
+  title={MR-GNN: Multi-Resolution and Dual Graph Neural Network for Predicting Structured Entity Interactions},
+  author={Xu, Nuo and Wang, Pinghui and Chen, Long and Tao, Jing and Zhao, Junzhou},
+  journal={Proceedings of IJCAI},
+  year={2019}
+}
+```
