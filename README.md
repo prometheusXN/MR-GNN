@@ -12,6 +12,8 @@ Reference
 -----------
 
 * Python >= 3.5
+* [Deepchem-gpu](https://github.com/deepchem/deepchem#requirements) == 2.3.0
+* Tensorflow == 1.13.1
 
 BibTex:
 
