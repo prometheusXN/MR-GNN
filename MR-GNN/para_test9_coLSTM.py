@@ -3,18 +3,23 @@
 # concat in the end of matmul, different from para17
 
 import deepchem as dc
-from deepchem.models.tf_new_models.graph_topology import GraphTopology
+from graph_topology import GraphTopology
 import os
 import tensorflow as tf
 import numpy as np
 # import models.layers as mylayer
 import argparse
-import layers_new_3 as mylayers
+import layers_keras as mylayers
 from data_load_2 import load_interaction_data
-from deepchem.models.tf_new_models.graph_topology import merge_dicts
+from graph_topology import merge_dicts
+from keras.layers import Dense
+from keras.layers import Input
 import sys
 import time,pickle
 from sklearn import metrics
+from rdkit import RDLogger
+
+RDLogger.DisableLog('rdApp.*')
 
 model_name='para_test9_matmul_coLSTM'
 conv_size=384
@@ -131,7 +136,6 @@ def evaluate(dataset_a, dataset_b, steps, lose_num):
     # print(auc_y_set)
     return accuracy_1, auc, accuracy
 
-
 with tf.Graph().as_default():
     graphA_topology = GraphTopology(n_features, name='topology_A')
     graphB_topology = GraphTopology(n_features, name='topology_B')
@@ -140,36 +144,33 @@ with tf.Graph().as_default():
         outputB = graphB_topology.get_atom_features_placeholder()
         label_gold = tf.placeholder(dtype=tf.int32, shape=[None], name="label_placeholder")
         training = tf.placeholder(dtype='float32', shape=(), name='ops_training')
-    add_time = 0
+    add_time = tf.constant(0, dtype='int32')
 
-    lstm = tf.contrib.rnn.BasicLSTMCell(Dense_size)
+    lstm = tf.keras.layers.LSTMCell(Dense_size)
     hidden_state = tf.zeros([batch_size, lstm.state_size[0]])
     current_state = tf.zeros([batch_size, lstm.state_size[0]])
     
-    lstm_1 = tf.contrib.rnn.BasicLSTMCell(Dense_size*2)
+    lstm_1 = tf.keras.layers.LSTMCell(Dense_size*2)
     Hidden_state = tf.zeros([batch_size, lstm_1.state_size[0]])
     Current_state = tf.zeros([batch_size, lstm_1.state_size[0]])
-    
+
     stateA = hidden_state, current_state
     stateB = hidden_state, current_state
     
     State = Hidden_state, Current_state
-
     # layer1 :
     lay1_conv = mylayers.GraphConv_and_gather(conv_size, n_features, batch_size, activation='relu', dropout=dropout0)
     # lay1_norm = dc.nn.BatchNormalization(epsilon=1e-5, mode=1)
-    lay1_pool = dc.nn.GraphPool()
-    lay1_dense = mylayers.Dense(Dense_size, conv_size, activation='relu')
-
-    outputA, gatherA, _ = lay1_conv(
-        [outputA] + graphA_topology.get_topology_placeholders() + [training] + [add_time])
+    lay1_pool = mylayers.GraphPool()
+    lay1_dense = tf.keras.layers.Dense(Dense_size, activation='relu', name='Dense_1')
+    outputA, gatherA, _ = lay1_conv([outputA] + graphA_topology.get_topology_placeholders() + [training] + [add_time])
     # outputA = lay1_norm(outputA)
     outputA = lay1_pool([outputA] + graphA_topology.get_topology_placeholders() + [training] + [add_time])
     gatherA = lay1_dense(gatherA)
-
+    # print(gatherA)
+    # print(stateA)
     # gatherA = lay1_norm(gatherA)
-    h_A_1, stateA = lstm(gatherA, stateA)
-
+    h_A_1, stateA = lstm(gatherA, states=stateA)
     outputB, gatherB, _ = lay1_conv(
         [outputB] + graphB_topology.get_topology_placeholders() + [training] + [add_time])
     # outputB = lay1_norm(outputB)
@@ -177,16 +178,16 @@ with tf.Graph().as_default():
     gatherB = lay1_dense(gatherB)
 
     # gatherB = lay1_norm(gatherB)
-    h_B_1, stateB = lstm(gatherB, stateB)
+    h_B_1, stateB = lstm(gatherB, states=stateB)
 
     Inter = tf.concat([gatherA, gatherB], 1)
-    h_1, State = lstm_1(Inter, State)
+    h_1, State = lstm_1(Inter, states=State)
 
     # layer2 :
     lay2_conv = mylayers.GraphConv_and_gather(conv_size, conv_size, batch_size, activation='relu', dropout=dropout1)
     # lay2_norm = dc.nn.BatchNormalization(epsilon=1e-5, mode=1)
-    lay2_pool = dc.nn.GraphPool()
-    lay2_dense = mylayers.Dense(Dense_size, conv_size, activation='relu')
+    lay2_pool = mylayers.GraphPool()
+    lay2_dense = tf.keras.layers.Dense(Dense_size, activation='relu')
 
     outputA, gatherA, _ = lay2_conv(
         [outputA] + graphA_topology.get_topology_placeholders() + [training] + [add_time])
@@ -195,7 +196,7 @@ with tf.Graph().as_default():
     gatherA = lay2_dense(gatherA)
 
     # gatherA = lay2_norm(gatherA)
-    h_A_2, stateA = lstm(gatherA, stateA)
+    h_A_2, stateA = lstm(gatherA, states=stateA)
 
     outputB, gatherB, _ = lay2_conv(
         [outputB] + graphB_topology.get_topology_placeholders() + [training] + [add_time])
@@ -204,10 +205,10 @@ with tf.Graph().as_default():
     gatherB = lay2_dense(gatherB)
 
     # gatherB = lay2_norm(gatherB)
-    h_B_2, stateB = lstm(gatherB, stateB)
+    h_B_2, stateB = lstm(gatherB, states=stateB)
     
     Inter = tf.concat([gatherA, gatherB], 1)
-    h_2, State = lstm_1(Inter, State)
+    h_2, State = lstm_1(Inter, states=State)
 
     # # layer3 :
     # lay3_conv = mylayers.GraphConv_and_gather(conv_size, conv_size, batch_size, activation='relu', dropout=dropout)
@@ -232,14 +233,14 @@ with tf.Graph().as_default():
     # layer4 :
     lay4_gather = mylayers.GraphConv_and_gather(conv_size, conv_size, batch_size, activation='relu', dropout=dropout2)
     # lay4_norm = dc.nn.BatchNormalization(epsilon=1e-5, mode=1)
-    lay4_dense = mylayers.Dense(Dense_size, conv_size, activation='relu')
+    lay4_dense = tf.keras.layers.Dense(Dense_size, activation='relu')
 
     outputA, gatherA, poolingA = lay4_gather(
         [outputA] + graphA_topology.get_topology_placeholders() + [training] + [add_time])
     gatherA = lay4_dense(gatherA)
 
     # gatherA = lay4_norm(gatherA)
-    h_A_4, stateA = lstm(gatherA, stateA)
+    h_A_4, stateA = lstm(gatherA, states=stateA)
     
 
     outputB, gatherB, poolingB = lay4_gather(
@@ -247,10 +248,10 @@ with tf.Graph().as_default():
     gatherB = lay4_dense(gatherB)
 
     # gatherB = lay4_norm(gatherB)
-    h_B_4, stateB = lstm(gatherB, stateB)
+    h_B_4, stateB = lstm(gatherB, states=stateB)
     
     Inter = tf.concat([gatherA, gatherB], 1)
-    h_4, State = lstm_1(Inter, State)
+    h_4, State = lstm_1(Inter, states=State)
     # mul=[]
     # for i in range(batch_size):
     #     a=tf.slice(h_A_4,[i,0],[1,-1])
