@@ -12,8 +12,8 @@ import argparse
 import layers_keras as mylayers
 from data_load_2 import load_interaction_data
 from graph_topology import merge_dicts
-from keras.layers import Dense
-from keras.layers import Input
+from tensorflow.python.keras.layers import Dense
+from tensorflow.python.keras.layers import Input
 import sys
 import time,pickle
 from sklearn import metrics
