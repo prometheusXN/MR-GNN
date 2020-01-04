@@ -11,6 +11,8 @@ Requirements
 Reference
 -----------
 
+* Python >= 3.5
+
 BibTex:
 
 ```Latex
