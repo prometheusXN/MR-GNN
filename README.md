@@ -4,8 +4,9 @@ The source code of ['MR-GNN: Multi-Resolution and Dual Graph Neural Network for 
 
 Table of contents
 -----------
-[Requirements](https://github.com/prometheusXN/MR-GNN/#requirements)
-[Usage](https://github.com/prometheusXN/MR-GNN/#usage)
+* [Requirements](https://github.com/prometheusXN/MR-GNN/#requirements)
+* [Usage](https://github.com/prometheusXN/MR-GNN/#usage)
+* [Reference](https://github.com/prometheusXN/MR-GNN/#reference)
 
 Requirements
 -----------
@@ -16,7 +17,7 @@ Requirements
 Usage
 -----------
 
-Reference
+References
 -----------
 
 BibTex:
