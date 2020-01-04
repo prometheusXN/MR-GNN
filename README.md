@@ -4,16 +4,20 @@ The source code of ['MR-GNN: Multi-Resolution and Dual Graph Neural Network for 
 
 Table of contents
 -----------
+[Requirements](https://github.com/prometheusXN/MR-GNN/#requirements)
+[Usage](https://github.com/prometheusXN/MR-GNN/#usage)
 
 Requirements
+-----------
+* Python >= 3.5
+* [Deepchem-gpu](https://github.com/deepchem/deepchem#requirements) == 2.3.0
+* Tensorflow == 1.13.1
+
+Usage
 -----------
 
 Reference
 -----------
-
-* Python >= 3.5
-* [Deepchem-gpu](https://github.com/deepchem/deepchem#requirements) == 2.3.0
-* Tensorflow == 1.13.1
 
 BibTex:
 
