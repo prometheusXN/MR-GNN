@@ -4,16 +4,16 @@ from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
-__author__ = "Nuo Xu and Long Chen"
-__copyright__ = "Copyright 2019, Xi'an Jiaotong University"
-__license__ = "XJTU"
+__author__ = "Han Altae-Tran and Bharath Ramsundar"
+__copyright__ = "Copyright 2016, Stanford University"
+__license__ = "MIT"
 
 import warnings
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras import activations
-from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.layers import Dense
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import backend as model_ops
 
@@ -91,8 +91,9 @@ def graph_gather(atoms, membership_placeholder, batch_size):
 
   return sparse_reps
 
+
 def graph_conv(atoms, deg_adj_lists, deg_slice, max_deg, min_deg, W_list,
-               b_list, membership, batch_size):
+               b_list, gather_W_list, gather_b_list, membership, batch_size):
     """Core tensorflow function implementing graph convolution
 
     Parameters
@@ -120,6 +121,9 @@ def graph_conv(atoms, deg_adj_lists, deg_slice, max_deg, min_deg, W_list,
     """
     W = iter(W_list)
     b = iter(b_list)
+
+    W_1 = iter(gather_W_list)
+    b_1 = iter(gather_b_list)
 
     #Sum all neighbors using adjacency matrix
     deg_summed = sum_neigh(atoms, deg_adj_lists, max_deg)
@@ -169,7 +173,7 @@ def graph_conv(atoms, deg_adj_lists, deg_slice, max_deg, min_deg, W_list,
         size = tf.stack([deg_slice[dg - min_deg, 1], -1])
         self_atoms = tf.slice(atoms, begin, size)
 
-        out_gather = affine(self_atoms, next(W), next(b))
+        out_gather = affine(self_atoms, next(W_1), next(b_1))
         new_gather_atoms_collection[dg - min_deg] = out_gather
 
     if min_deg == 0:
@@ -180,7 +184,7 @@ def graph_conv(atoms, deg_adj_lists, deg_slice, max_deg, min_deg, W_list,
         self_atoms = tf.slice(atoms, begin, size)
 
         # Only use the self layer
-        out_gather = affine(self_atoms, next(W), next(b))
+        out_gather = affine(self_atoms, next(W_1), next(b_1))
 
         new_gather_atoms_collection[dg - min_deg] = out_gather
 
@@ -212,42 +216,12 @@ def gather_node(activated_atoms, membership, batch_size):
     return gather
 
 
-def graph_conv1(atoms, deg_adj_lists, deg_slice, max_deg, min_deg, W_list,
-               b_list, membership, batch_size):
-    """Core tensorflow function implementing graph convolution
+def graph_conv1(atoms, deg_adj_lists, deg_slice, max_deg, min_deg, W_list, b_list, membership, batch_size):
 
-    Parameters
-    ----------
-    atoms: tf.Tensor
-    Should be of shape (n_atoms, n_feat)
-    deg_adj_lists: list
-    Of length (max_deg+1-min_deg). The deg-th element is a list of
-    adjacency lists for atoms of degree deg.
-    deg_slice: tf.Tensor
-    Of shape (max_deg+1-min_deg,2). Explained in GraphTopology.
-    max_deg: int
-    Maximum degree of atoms in molecules.
-    min_deg: int
-    Minimum degree of atoms in molecules
-    W_list: list
-    List of learnable weights for convolution.
-    b_list: list
-    List of learnable biases for convolution.
-
-    Returns
-    -------
-    tf.Tensor
-    Of shape (n_atoms, n_feat)
-    """
     W = iter(W_list)
     b = iter(b_list)
 
-    #Sum all neighbors using adjacency matrix
-    deg_summed = sum_neigh(atoms, deg_adj_lists, max_deg)
-
     # Get collection of modified atom features
-    new_rel_atoms_collection = (max_deg + 1 - min_deg) * [None]
-
     new_gather_atoms_collection = (max_deg + 1 - min_deg) * [None]
 
   # Determine the min_deg=0 case
@@ -393,7 +367,6 @@ class Dense(Layer):
       output += self.b
     return output
 
-
 class GraphConv_and_gather(Layer):
     """"Performs a graph convolution.
 
@@ -457,6 +430,11 @@ class GraphConv_and_gather(Layer):
         self.W_list = [self.add_weight(trainable=True, shape=[self.n_atom_features, self.nb_filter], name=self.name + '_W_' + str(k)) for k in range(self.nb_affine)]
         self.b_list = [self.add_weight(trainable=True, shape=[self.nb_filter, ], name=self.name + '_b_' + str(k)) for k in range(self.nb_affine)]
 
+        self.gather_W_list = [self.add_weight(trainable=True, shape=[self.n_atom_features, self.nb_filter],
+                                       name=self.name + '_W_' + str(k)) for k in range(self.nb_affine)]
+        self.gather_b_list = [self.add_weight(trainable=True, shape=[self.nb_filter, ], name=self.name + '_b_' + str(k)) for k
+                       in range(self.nb_affine)]
+
         # self.trainable_weights = self.W_list + self.b_list
 
         shape = input_shape[-1]
@@ -513,7 +491,7 @@ class GraphConv_and_gather(Layer):
         # Perform the mol conv
         atom_features, gather_feature = graph_conv(atom_features_ori, deg_adj_lists, deg_slice,
                                    self.max_deg, self.min_deg, self.W_list,
-                                   self.b_list, membership, self.batch_size)
+                                   self.b_list,self.gather_W_list, self.gather_b_list, membership, self.batch_size)
 
         atom_features = self.activation(atom_features)
         gather_feature = self.activation(gather_feature)
@@ -589,12 +567,7 @@ class Gather1(Layer):
         min_deg: int, optional
           Minimum degree of atoms in molecules.
         """
-        warnings.warn("The dc.nn.GraphConv is "
-                      "deprecated. Will be removed in DeepChem 1.4. "
-                      "Will be replaced by dc.models.tensorgraph.layers.GraphConv",
-                      DeprecationWarning)
         super(Gather1, self).__init__(**kwargs)
-
         self.init = initializers.get(init)  # Set weight initialization
         self.activation = activations.get(activation)  # Get activations
         self.nb_filter = nb_filter  # Save number of filters
@@ -606,7 +579,7 @@ class Gather1(Layer):
         self.nb_affine = max_deg + (1 - min_deg)
         self.n_atom_features = n_atom_features
 
-    def build(self):
+    def build(self, input_shape):
         """"Construct internal trainable weights.
 
         n_atom_features should provide the number of features per atom.
@@ -616,20 +589,11 @@ class Gather1(Layer):
         n_atom_features: int
           Number of features provied per atom.
         """
-        n_atom_features = self.n_atom_features
-
         # Generate the nb_affine weights and biases
-        self.W_list = [
-            self.init([n_atom_features, self.nb_filter])
-            for k in range(self.nb_affine)
-        ]
-        self.b_list = [
-            model_ops.zeros(shape=[
-                self.nb_filter,
-            ]) for k in range(self.nb_affine)
-        ]
+        self.W_list = [self.add_weight(trainable=True, shape=[self.n_atom_features, self.nb_filter], name=self.name + '_W_' + str(k)) for k in range(self.nb_affine)]
+        self.b_list = [self.add_weight(trainable=True, shape=[self.nb_filter, ], name=self.name + '_b_' + str(k)) for k in range(self.nb_affine)]
 
-        self.trainable_weights = self.W_list + self.b_list
+        # self.trainable_weights = self.W_list + self.b_list
 
     def get_output_shape_for(self, input_shape):
         """Output tensor shape produced by this layer."""
@@ -663,9 +627,6 @@ class Gather1(Layer):
         atom_features: tf.Tensor
           Of shape (n_atoms, nb_filter)
         """
-        # Add trainable weights
-        self.build()
-
         # Extract atom_features
         atom_features = x[0]
 
@@ -678,13 +639,16 @@ class Gather1(Layer):
                                    self.max_deg, self.min_deg, self.W_list,
                                    self.b_list, membership, self.batch_size)
 
-        # atom_features = self.activation(atom_features)
         gather_feature = self.activation(gather_feature)
 
         if self.dropout is not None:
-            # atom_features = training * tf.nn.dropout(atom_features, 1-self.dropout) + (1 -training) * atom_features
             gather_feature = training * tf.nn.dropout(gather_feature, 1-self.dropout) + (1 -training) * gather_feature
         return gather_feature
+
+    def compute_output_shape(self, input_shape):
+        output_shape_2 = [self.batch_size, self.nb_filter]
+        return tuple(output_shape_2)
+
 
 class GraphPool(Layer):
   """Performs a pooling operation over an arbitrary graph.
