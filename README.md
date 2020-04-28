@@ -16,6 +16,9 @@ Requirements
 
 Usage
 -----------
+If you want to repeoduce the experiment result of MR-GNN, please run the code "para_test9_coLSTM.py" and "para_test9_coLSTM_ddi.py".
+
+    pyhthon para_test9_coLSTM.py -g 0
 
 References
 -----------
